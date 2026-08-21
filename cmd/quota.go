@@ -4,27 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	"agent-pass/internal/config"
 	"agent-pass/internal/quota"
 	"agent-pass/internal/ui"
 )
 
-var (
-	quotaJsonOutput bool
-	quotaSetTotal   int
-	quotaSetUsed    int
-	quotaSetResetIn string
-	quotaSetModel   string
-)
+var quotaJsonOutput bool
 
 var quotaCmd = &cobra.Command{
 	Use:   "quota [agent]",
 	Short: "Check remaining quota for agent accounts",
-	Long:  "Inspect live API quota, rolling rate-limit windows (5h/weekly/monthly), and status for all or a specific AI coding agent.",
+	Long:  "Inspect remaining quota and reset countdowns for configured AI coding agents.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -86,11 +78,10 @@ var quotaCmd = &cobra.Command{
 			return nil
 		}
 
-		// Render UI
-		header := ui.SectionHeader(ui.IconQuota, "Quota & Rate Limit Overview")
+		// Concise, clean UI Rendering
+		header := ui.SectionHeader(ui.IconQuota, "Quota Overview")
 		output := "\n" + header + "\n\n"
 
-		// Group reports by Agent
 		agentGroups := make(map[string][]*quota.AgentQuotaReport)
 		for _, rep := range reports {
 			agentGroups[rep.AgentName] = append(agentGroups[rep.AgentName], rep)
@@ -110,38 +101,16 @@ var quotaCmd = &cobra.Command{
 				}
 
 				accLabel := ui.AccountInactive.Render(rep.AccountName)
+				indicator := ui.IconDotOpen
 				if rep.IsActive {
-					accLabel = ui.AccountActive.Render(rep.AccountName) + ui.Muted.Render(" (active)")
+					accLabel = ui.AccountActive.Render(rep.AccountName)
+					indicator = ui.Success.Render(ui.IconDot)
 				}
 
-				// Badges
-				badge := ""
-				if rep.IsLiveAPI {
-					badge = " " + lipgloss.NewStyle().
-						Foreground(ui.ColorSuccess).
-						Background(lipgloss.Color("#132A1C")).
-						Padding(0, 1).
-						Render("LIVE API")
-				}
+				planBadge := ""
 				if rep.PlanType != "" {
-					badge += " " + lipgloss.NewStyle().
-						Foreground(ui.ColorSecondary).
-						Background(lipgloss.Color("#162B34")).
-						Padding(0, 1).
-						Render(rep.PlanType)
+					planBadge = " " + ui.Accent.Render("["+rep.PlanType+"]")
 				}
-
-				emailText := ""
-				if rep.AccountEmail != "" && rep.AccountEmail != rep.AccountName {
-					emailText = " " + ui.Muted.Render(fmt.Sprintf("<%s>", rep.AccountEmail))
-				}
-
-				output += fmt.Sprintf("  %s %s%s%s\n",
-					ui.Muted.Render(tree),
-					accLabel,
-					badge,
-					emailText,
-				)
 
 				pipe := ui.TreePipe
 				if isLastAcc {
@@ -149,14 +118,27 @@ var quotaCmd = &cobra.Command{
 				}
 
 				if rep.Error != "" {
+					output += fmt.Sprintf("  %s %s %s%s\n",
+						ui.Muted.Render(tree), indicator, accLabel, planBadge)
 					output += fmt.Sprintf("  %s   %s\n",
-						ui.Muted.Render(pipe),
-						ui.Warning.Render("⚠ "+rep.Error),
+						ui.Muted.Render(pipe), ui.Warning.Render("⚠ "+rep.Error))
+				} else if len(rep.Windows) == 1 && rep.AgentName == "antigravity" {
+					// Single-line Antigravity format
+					bar := ui.ProgressBar(100, 10)
+					output += fmt.Sprintf("  %s %s %s  %s  %s\n",
+						ui.Muted.Render(tree),
+						indicator,
+						accLabel,
+						bar,
+						ui.Success.Render("100% · Active"),
 					)
 				} else if len(rep.Windows) > 0 {
+					output += fmt.Sprintf("  %s %s %s%s\n",
+						ui.Muted.Render(tree), indicator, accLabel, planBadge)
+
 					for _, win := range rep.Windows {
-						bar := ui.ProgressBar(win.RemainingPercent, 14)
-						pctStr := fmt.Sprintf("%.0f%% remaining", win.RemainingPercent)
+						bar := ui.ProgressBar(win.RemainingPercent, 10)
+						pctStr := fmt.Sprintf("%.0f%%", win.RemainingPercent)
 
 						var pctStyle func(string) string
 						switch {
@@ -183,35 +165,14 @@ var quotaCmd = &cobra.Command{
 							}
 						}
 
-						countsStr := ""
-						if win.TotalCount > 0 {
-							countsStr = fmt.Sprintf(" (%d / %d requests)", win.TotalCount-win.UsedCount, win.TotalCount)
-						}
-
-						output += fmt.Sprintf("  %s   %s: %s  %s%s%s\n",
+						output += fmt.Sprintf("  %s   %s: %s  %s%s\n",
 							ui.Muted.Render(pipe),
-							ui.Subtitle.Render(win.Name),
+							ui.Muted.Render(win.Name),
 							bar,
 							pctStyle(pctStr),
-							countsStr,
 							ui.Muted.Render(resetStr),
 						)
 					}
-				}
-
-				if rep.CreditBalance != "" {
-					output += fmt.Sprintf("  %s   %s %s\n",
-						ui.Muted.Render(pipe),
-						ui.Label.Render("Credit Balance:"),
-						ui.Bright.Render(rep.CreditBalance),
-					)
-				}
-
-				if rep.QuotaNotice != "" {
-					output += fmt.Sprintf("  %s   %s\n",
-						ui.Muted.Render(pipe),
-						ui.Muted.Render("ℹ "+rep.QuotaNotice),
-					)
 				}
 			}
 
@@ -226,61 +187,7 @@ var quotaCmd = &cobra.Command{
 	},
 }
 
-var quotaSetCmd = &cobra.Command{
-	Use:   "set <agent> <account>",
-	Short: "Configure or update local tracking allowance for an account",
-	Long:  "Manually configure the total requests, used requests, and reset duration for local tracking.",
-	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		agentName := args[0]
-		accountName := args[1]
-
-		cfg, err := config.Load()
-		if err != nil {
-			fmt.Print(ui.ErrorMessage(fmt.Sprintf("Failed to load config: %v", err)))
-			return nil
-		}
-
-		var resetDuration time.Duration
-		if quotaSetResetIn != "" {
-			d, err := time.ParseDuration(quotaSetResetIn)
-			if err != nil {
-				fmt.Print(ui.ErrorMessage(fmt.Sprintf("Invalid reset duration '%s' (e.g. 24h, 2h30m): %v", quotaSetResetIn, err)))
-				return nil
-			}
-			resetDuration = d
-		} else {
-			resetDuration = 24 * time.Hour
-		}
-
-		if quotaSetTotal <= 0 {
-			quotaSetTotal = 300
-		}
-
-		if err := cfg.UpdateAccountQuota(agentName, accountName, quotaSetTotal, quotaSetUsed, resetDuration, quotaSetModel); err != nil {
-			fmt.Print(ui.ErrorMessage(fmt.Sprintf("Failed to update quota: %v", err)))
-			return nil
-		}
-
-		if err := cfg.Save(); err != nil {
-			fmt.Print(ui.ErrorMessage(fmt.Sprintf("Failed to save config: %v", err)))
-			return nil
-		}
-
-		fmt.Print(ui.SuccessMessage(fmt.Sprintf("Updated quota tracking for %s/%s (%d/%d requests, resets in %v)",
-			agentName, accountName, quotaSetTotal-quotaSetUsed, quotaSetTotal, resetDuration)))
-		return nil
-	},
-}
-
 func init() {
 	quotaCmd.Flags().BoolVar(&quotaJsonOutput, "json", false, "Output quota in JSON format for automated scripts/AI agents")
-
-	quotaSetCmd.Flags().IntVarP(&quotaSetTotal, "total", "t", 300, "Total request allowance (e.g. 300)")
-	quotaSetCmd.Flags().IntVarP(&quotaSetUsed, "used", "u", 0, "Used requests (e.g. 50)")
-	quotaSetCmd.Flags().StringVarP(&quotaSetResetIn, "reset", "r", "24h", "Time until reset (e.g. 4h, 24h, 30m)")
-	quotaSetCmd.Flags().StringVarP(&quotaSetModel, "model", "m", "", "Associated model name")
-
-	quotaCmd.AddCommand(quotaSetCmd)
 	rootCmd.AddCommand(quotaCmd)
 }
