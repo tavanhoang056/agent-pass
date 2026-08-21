@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -80,16 +81,24 @@ Can be run interactively (with arrow keys) or in headless mode by providing the 
 
 		// If target account is specified directly, run in headless mode
 		if targetAccount != "" {
-			// Verify account exists
-			accountExists := false
+			matchedAccount := ""
 			for _, acc := range agentCfg.Accounts {
 				if acc.Name == targetAccount {
-					accountExists = true
+					matchedAccount = acc.Name
 					break
 				}
 			}
+			if matchedAccount == "" {
+				lowerTarget := strings.ToLower(targetAccount)
+				for _, acc := range agentCfg.Accounts {
+					if strings.Contains(strings.ToLower(acc.Name), lowerTarget) {
+						matchedAccount = acc.Name
+						break
+					}
+				}
+			}
 
-			if !accountExists {
+			if matchedAccount == "" {
 				msg := fmt.Sprintf("Account '%s' not found for agent '%s'", targetAccount, agentName)
 				if switchJsonOutput {
 					res, _ := json.Marshal(SwitchResult{Success: false, Agent: agentName, Message: msg})
@@ -102,7 +111,7 @@ Can be run interactively (with arrow keys) or in headless mode by providing the 
 
 			prevAccount := agentCfg.Active
 			backupDir := config.ConfigDir()
-			if err := agentInfo.SwitchAccount(agentCfg.Active, targetAccount, backupDir); err != nil {
+			if err := agentInfo.SwitchAccount(agentCfg.Active, matchedAccount, backupDir); err != nil {
 				msg := fmt.Sprintf("Switch failed: %v", err)
 				if switchJsonOutput {
 					res, _ := json.Marshal(SwitchResult{Success: false, Agent: agentName, PreviousAcc: prevAccount, Message: msg})
@@ -113,7 +122,7 @@ Can be run interactively (with arrow keys) or in headless mode by providing the 
 				return nil
 			}
 
-			_ = cfg.SetActiveAccount(agentName, targetAccount)
+			_ = cfg.SetActiveAccount(agentName, matchedAccount)
 			_ = cfg.Save()
 
 			if switchJsonOutput {
@@ -121,14 +130,14 @@ Can be run interactively (with arrow keys) or in headless mode by providing the 
 					Success:     true,
 					Agent:       agentName,
 					PreviousAcc: prevAccount,
-					CurrentAcc:  targetAccount,
-					Message:     fmt.Sprintf("Successfully switched %s to %s", agentInfo.DisplayName, targetAccount),
+					CurrentAcc:  matchedAccount,
+					Message:     fmt.Sprintf("Successfully switched %s to %s", agentInfo.DisplayName, matchedAccount),
 				})
 				fmt.Println(string(res))
 				return nil
 			}
 
-			fmt.Print(ui.SuccessMessage(fmt.Sprintf("Switched %s to %s", agentInfo.DisplayName, targetAccount)))
+			fmt.Print(ui.SuccessMessage(fmt.Sprintf("Switched %s to %s", agentInfo.DisplayName, matchedAccount)))
 			return nil
 		}
 
