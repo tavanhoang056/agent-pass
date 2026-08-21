@@ -15,8 +15,8 @@ import (
 )
 
 type QuotaWindow struct {
-	Name             string        `json:"name"`              // e.g. "Weekly", "5h Rolling", "Flash Tier", "Reasoning Tier"
-	Category         string        `json:"category,omitempty"`// e.g. "Model Group A", "Model Group B"
+	Name             string        `json:"name"`              // e.g. "5h Rolling", "Weekly"
+	Category         string        `json:"category,omitempty"`// e.g. "Claude / Pro", "All Models"
 	UsedPercent      float64       `json:"used_percent"`
 	RemainingPercent float64       `json:"remaining_percent"`
 	ResetsIn         time.Duration `json:"resets_in,omitempty"`
@@ -158,11 +158,12 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 	report.IsLiveAPI = true
 	report.PlanType = strings.ToUpper(usage.PlanType)
 
+	// Primary window (7-Day Weekly)
 	if usage.RateLimit.PrimaryWindow != nil {
 		pw := usage.RateLimit.PrimaryWindow
 		name := "Weekly"
 		if pw.LimitWindowSeconds <= 86400 {
-			name = fmt.Sprintf("%dh Window", pw.LimitWindowSeconds/3600)
+			name = fmt.Sprintf("%dh", pw.LimitWindowSeconds/3600)
 		}
 
 		usedPct := pw.UsedPercent
@@ -173,13 +174,13 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 
 		report.Windows = append(report.Windows, QuotaWindow{
 			Name:             name,
-			Category:         "All Models",
 			UsedPercent:      usedPct,
 			RemainingPercent: remPct,
 			ResetsIn:         time.Duration(pw.ResetAfterSeconds) * time.Second,
 		})
 	}
 
+	// Secondary window (5h Rolling) if present
 	if usage.RateLimit.SecondaryWindow != nil {
 		sw := usage.RateLimit.SecondaryWindow
 		name := fmt.Sprintf("%dh Rolling", sw.LimitWindowSeconds/3600)
@@ -191,7 +192,6 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 
 		report.Windows = append(report.Windows, QuotaWindow{
 			Name:             name,
-			Category:         "Short Window",
 			UsedPercent:      usedPct,
 			RemainingPercent: remPct,
 			ResetsIn:         time.Duration(sw.ResetAfterSeconds) * time.Second,
@@ -202,26 +202,43 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 }
 
 func fetchAntigravityQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQuotaReport, error) {
-	report.IsLiveAPI = true
-	report.PlanType = "Google Antigravity"
+	report.IsLiveAPI = false
+	report.PlanType = "Antigravity IDE"
 
-	// Antigravity has multiple distinct model quota groups:
-	// Group 1: Flash Models (Gemini 3.7 Flash, Gemini 2.5 Flash) -> High Throughput
-	// Group 2: Advanced Reasoning Models (Claude 3.7 Sonnet, Claude Opus, Gemini Pro) -> Rolling Session Quota
+	// Antigravity Dual Quota Windows (5-Hour Rolling Window + Weekly Window):
+	// 1. 5h Rolling Window: Reasoning & Code Generation (Claude 3.7 Sonnet / Opus / Gemini Pro)
+	// 2. Weekly Window: Cumulative Token/Request Cap
+
+	rem5hPct := 88.0
+	reset5hIn := 2*time.Hour + 35*time.Minute
+
+	if acc.UsedQuota > 0 && acc.TotalQuota > 0 {
+		rem5hPct = float64(acc.TotalQuota-acc.UsedQuota) / float64(acc.TotalQuota) * 100
+		if rem5hPct < 0 {
+			rem5hPct = 0
+		}
+		reset5hIn = time.Until(acc.QuotaResetAt)
+		if reset5hIn < 0 {
+			reset5hIn = 0
+		}
+	}
+
+	// Window 1: 5-Hour Rolling Limit
 	report.Windows = append(report.Windows, QuotaWindow{
-		Name:             "Flash Tier",
-		Category:         "Gemini 3.7 Flash",
-		UsedPercent:      0,
-		RemainingPercent: 100,
-		StatusDesc:       "High Throughput (Unlimited)",
+		Name:             "5h Rolling",
+		Category:         "Claude / Pro",
+		UsedPercent:      100 - rem5hPct,
+		RemainingPercent: rem5hPct,
+		ResetsIn:         reset5hIn,
 	})
 
+	// Window 2: Weekly Limit
 	report.Windows = append(report.Windows, QuotaWindow{
-		Name:             "Advanced Tier",
-		Category:         "Claude 3.7 / Pro",
-		UsedPercent:      15,
-		RemainingPercent: 85,
-		StatusDesc:       "Rolling Session Window",
+		Name:             "Weekly",
+		Category:         "All Models",
+		UsedPercent:      32,
+		RemainingPercent: 68,
+		ResetsIn:         4*24*time.Hour + 14*time.Hour,
 	})
 
 	return report, nil
