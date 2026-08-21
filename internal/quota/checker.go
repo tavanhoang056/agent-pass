@@ -120,20 +120,32 @@ type whamUsageResponse struct {
 }
 
 func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQuotaReport, error) {
-	configDir := acc.ConfigDir
-	if configDir == "" {
-		home, _ := os.UserHomeDir()
-		configDir = filepath.Join(home, ".codex")
+	home, _ := os.UserHomeDir()
+
+	candidatePaths := []string{}
+	if acc.ConfigDir != "" {
+		candidatePaths = append(candidatePaths, filepath.Join(acc.ConfigDir, "auth.json"))
 	}
-	authPath := filepath.Join(configDir, "auth.json")
-	data, err := os.ReadFile(authPath)
-	if err != nil {
-		report.Error = "Auth file not found"
+	candidatePaths = append(candidatePaths, filepath.Join(home, ".agpass", "codex", acc.Name, "auth.json"))
+	if report.IsActive {
+		candidatePaths = append(candidatePaths, filepath.Join(home, ".codex", "auth.json"))
+	}
+
+	var authData []byte
+	for _, p := range candidatePaths {
+		if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
+			authData = data
+			break
+		}
+	}
+
+	if len(authData) == 0 {
+		report.Error = "Auth file not found for this account"
 		return report, nil
 	}
 
 	var auth codexAuthFile
-	if err := json.Unmarshal(data, &auth); err != nil || auth.Tokens.AccessToken == "" {
+	if err := json.Unmarshal(authData, &auth); err != nil || auth.Tokens.AccessToken == "" {
 		report.Error = "No access token in auth.json"
 		return report, nil
 	}
