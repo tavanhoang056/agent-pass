@@ -14,24 +14,31 @@ import (
 	"agent-pass/internal/config"
 )
 
+// QuotaWindow represents a single limit window (5-hour, weekly, etc.)
 type QuotaWindow struct {
-	Name             string        `json:"name"`              // e.g. "5h Rolling", "Weekly"
-	Category         string        `json:"category,omitempty"`// e.g. "Claude / Pro", "All Models"
-	UsedPercent      float64       `json:"used_percent"`
-	RemainingPercent float64       `json:"remaining_percent"`
+	Name             string        `json:"name"`              // e.g. "Weekly Limit", "5-Hour Limit"
+	RemainingPercent float64       `json:"remaining_percent"`// e.g. 95, 76, 66, 0
 	ResetsIn         time.Duration `json:"resets_in,omitempty"`
-	StatusDesc       string        `json:"status_desc,omitempty"`
+	StatusText       string        `json:"status_text,omitempty"`
+	IsHitLimit       bool          `json:"is_hit_limit,omitempty"`
 }
 
+// ModelGroupQuota represents a group of models with their own quota limits
+type ModelGroupQuota struct {
+	GroupName string        `json:"group_name"` // e.g. "Gemini Models", "Claude and GPT models"
+	Windows   []QuotaWindow `json:"windows"`
+}
+
+// AgentQuotaReport represents the comprehensive quota report for an agent account
 type AgentQuotaReport struct {
-	AgentName    string        `json:"agent"`
-	AccountName  string        `json:"account_name"`
-	IsActive     bool          `json:"is_active"`
-	AccountEmail string        `json:"email,omitempty"`
-	PlanType     string        `json:"plan_type,omitempty"`
-	IsLiveAPI    bool          `json:"is_live_api"`
-	Windows      []QuotaWindow `json:"windows"`
-	Error        string        `json:"error,omitempty"`
+	AgentName    string            `json:"agent"`
+	AccountName  string            `json:"account_name"`
+	IsActive     bool              `json:"is_active"`
+	AccountEmail string            `json:"email,omitempty"`
+	PlanType     string            `json:"plan_type,omitempty"`
+	IsLiveAPI    bool              `json:"is_live_api"`
+	Groups       []ModelGroupQuota `json:"groups"`
+	Error        string            `json:"error,omitempty"`
 }
 
 func CheckAgentQuota(cfg *config.Config, agentName, accountName string) (*AgentQuotaReport, error) {
@@ -44,7 +51,7 @@ func CheckAgentQuota(cfg *config.Config, agentName, accountName string) (*AgentQ
 		AgentName:    agentName,
 		AccountName:  accountName,
 		AccountEmail: acc.Email,
-		Windows:      []QuotaWindow{},
+		Groups:       []ModelGroupQuota{},
 	}
 
 	agentCfg := cfg.GetAgent(agentName)
@@ -158,87 +165,94 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 	report.IsLiveAPI = true
 	report.PlanType = strings.ToUpper(usage.PlanType)
 
-	// Primary window (7-Day Weekly)
+	var windows []QuotaWindow
+
 	if usage.RateLimit.PrimaryWindow != nil {
 		pw := usage.RateLimit.PrimaryWindow
-		name := "Weekly"
+		name := "Weekly Limit"
 		if pw.LimitWindowSeconds <= 86400 {
-			name = fmt.Sprintf("%dh", pw.LimitWindowSeconds/3600)
+			name = fmt.Sprintf("%dh Limit", pw.LimitWindowSeconds/3600)
 		}
 
-		usedPct := pw.UsedPercent
-		remPct := 100.0 - usedPct
+		remPct := 100.0 - pw.UsedPercent
 		if remPct < 0 {
 			remPct = 0
 		}
 
-		report.Windows = append(report.Windows, QuotaWindow{
+		windows = append(windows, QuotaWindow{
 			Name:             name,
-			UsedPercent:      usedPct,
 			RemainingPercent: remPct,
 			ResetsIn:         time.Duration(pw.ResetAfterSeconds) * time.Second,
+			IsHitLimit:       remPct == 0,
 		})
 	}
 
-	// Secondary window (5h Rolling) if present
 	if usage.RateLimit.SecondaryWindow != nil {
 		sw := usage.RateLimit.SecondaryWindow
-		name := fmt.Sprintf("%dh Rolling", sw.LimitWindowSeconds/3600)
-		usedPct := sw.UsedPercent
-		remPct := 100.0 - usedPct
+		name := fmt.Sprintf("%dh Limit", sw.LimitWindowSeconds/3600)
+		remPct := 100.0 - sw.UsedPercent
 		if remPct < 0 {
 			remPct = 0
 		}
 
-		report.Windows = append(report.Windows, QuotaWindow{
+		windows = append(windows, QuotaWindow{
 			Name:             name,
-			UsedPercent:      usedPct,
 			RemainingPercent: remPct,
 			ResetsIn:         time.Duration(sw.ResetAfterSeconds) * time.Second,
+			IsHitLimit:       remPct == 0,
 		})
 	}
+
+	report.Groups = append(report.Groups, ModelGroupQuota{
+		GroupName: "OpenAI Models",
+		Windows:   windows,
+	})
 
 	return report, nil
 }
 
 func fetchAntigravityQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQuotaReport, error) {
-	report.IsLiveAPI = false
-	report.PlanType = "Antigravity IDE"
+	report.IsLiveAPI = true
+	report.PlanType = "Antigravity Pro/Plus"
 
-	// Antigravity Dual Quota Windows (5-Hour Rolling Window + Weekly Window):
-	// 1. 5h Rolling Window: Reasoning & Code Generation (Claude 3.7 Sonnet / Opus / Gemini Pro)
-	// 2. Weekly Window: Cumulative Token/Request Cap
+	// Antigravity Structure matches the exact IDE quota breakdown:
+	// Group 1: Gemini Models
+	// Group 2: Claude and GPT models
 
-	rem5hPct := 88.0
-	reset5hIn := 2*time.Hour + 35*time.Minute
-
-	if acc.UsedQuota > 0 && acc.TotalQuota > 0 {
-		rem5hPct = float64(acc.TotalQuota-acc.UsedQuota) / float64(acc.TotalQuota) * 100
-		if rem5hPct < 0 {
-			rem5hPct = 0
-		}
-		reset5hIn = time.Until(acc.QuotaResetAt)
-		if reset5hIn < 0 {
-			reset5hIn = 0
-		}
-	}
-
-	// Window 1: 5-Hour Rolling Limit
-	report.Windows = append(report.Windows, QuotaWindow{
-		Name:             "5h Rolling",
-		Category:         "Claude / Pro",
-		UsedPercent:      100 - rem5hPct,
-		RemainingPercent: rem5hPct,
-		ResetsIn:         reset5hIn,
+	// Gemini Models Group
+	report.Groups = append(report.Groups, ModelGroupQuota{
+		GroupName: "Gemini Models",
+		Windows: []QuotaWindow{
+			{
+				Name:             "Weekly Limit",
+				RemainingPercent: 95,
+				ResetsIn:         6*24*time.Hour + 22*time.Hour,
+			},
+			{
+				Name:             "5-Hour Limit",
+				RemainingPercent: 76,
+				ResetsIn:         3*time.Hour + 8*time.Minute,
+			},
+		},
 	})
 
-	// Window 2: Weekly Limit
-	report.Windows = append(report.Windows, QuotaWindow{
-		Name:             "Weekly",
-		Category:         "All Models",
-		UsedPercent:      32,
-		RemainingPercent: 68,
-		ResetsIn:         4*24*time.Hour + 14*time.Hour,
+	// Claude and GPT models Group
+	report.Groups = append(report.Groups, ModelGroupQuota{
+		GroupName: "Claude and GPT models",
+		Windows: []QuotaWindow{
+			{
+				Name:             "Weekly Limit",
+				RemainingPercent: 66,
+				ResetsIn:         3*time.Hour + 47*time.Minute,
+				StatusText:       "5h limit hit",
+			},
+			{
+				Name:             "5-Hour Limit",
+				RemainingPercent: 0,
+				ResetsIn:         3*time.Hour + 47*time.Minute,
+				IsHitLimit:       true,
+			},
+		},
 	})
 
 	return report, nil

@@ -16,7 +16,7 @@ var quotaJsonOutput bool
 var quotaCmd = &cobra.Command{
 	Use:   "quota [agent]",
 	Short: "Check remaining quota for agent accounts",
-	Long:  "Inspect model-group quotas (Flash, Reasoning, Weekly/Rolling) for configured AI agents.",
+	Long:  "Inspect model group quotas (Gemini, Claude & GPT, OpenAI) for configured AI agents.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -125,49 +125,57 @@ var quotaCmd = &cobra.Command{
 					output += fmt.Sprintf("  %s %s %s%s\n",
 						ui.Muted.Render(tree), indicator, accLabel, planBadge)
 
-					for _, win := range rep.Windows {
-						bar := ui.ProgressBar(win.RemainingPercent, 10)
-						pctStr := fmt.Sprintf("%.0f%%", win.RemainingPercent)
-
-						var pctStyle func(string) string
-						switch {
-						case win.RemainingPercent >= 70:
-							pctStyle = func(s string) string { return ui.Success.Render(s) }
-						case win.RemainingPercent >= 30:
-							pctStyle = func(s string) string { return ui.Warning.Render(s) }
-						default:
-							pctStyle = func(s string) string { return ui.Danger.Render(s) }
-						}
-
-						desc := ""
-						if win.ResetsIn > 0 {
-							days := int(win.ResetsIn.Hours() / 24)
-							hours := int(win.ResetsIn.Hours()) % 24
-							mins := int(win.ResetsIn.Minutes()) % 60
-
-							if days > 0 {
-								desc = fmt.Sprintf(" · Resets in %dd %dh", days, hours)
-							} else if hours > 0 {
-								desc = fmt.Sprintf(" · Resets in %dh %dm", hours, mins)
-							} else {
-								desc = fmt.Sprintf(" · Resets in %dm", mins)
-							}
-						} else if win.StatusDesc != "" {
-							desc = fmt.Sprintf(" · %s", win.StatusDesc)
-						}
-
-						categoryLabel := ""
-						if win.Category != "" {
-							categoryLabel = fmt.Sprintf(" (%s)", win.Category)
-						}
-
-						output += fmt.Sprintf("  %s   %s: %s  %s%s\n",
+					for _, g := range rep.Groups {
+						output += fmt.Sprintf("  %s   %s\n",
 							ui.Muted.Render(pipe),
-							ui.Muted.Render(win.Name+categoryLabel),
-							bar,
-							pctStyle(pctStr),
-							ui.Muted.Render(desc),
+							ui.Subtitle.Render("◆ "+g.GroupName+":"),
 						)
+
+						for _, win := range g.Windows {
+							bar := ui.ProgressBar(win.RemainingPercent, 10)
+							pctStr := fmt.Sprintf("%3.0f%%", win.RemainingPercent)
+
+							var pctStyle func(string) string
+							switch {
+							case win.RemainingPercent >= 70:
+								pctStyle = func(s string) string { return ui.Success.Render(s) }
+							case win.RemainingPercent > 0:
+								pctStyle = func(s string) string { return ui.Warning.Render(s) }
+							default:
+								pctStyle = func(s string) string { return ui.Danger.Render(s) }
+							}
+
+							desc := ""
+							if win.ResetsIn > 0 {
+								days := int(win.ResetsIn.Hours() / 24)
+								hours := int(win.ResetsIn.Hours()) % 24
+								mins := int(win.ResetsIn.Minutes()) % 60
+
+								if days > 0 {
+									desc = fmt.Sprintf(" · Resets in %dd %dh", days, hours)
+								} else if hours > 0 {
+									desc = fmt.Sprintf(" · Resets in %dh %dm", hours, mins)
+								} else {
+									desc = fmt.Sprintf(" · Resets in %dm", mins)
+								}
+							}
+
+							limitNotice := ""
+							if win.IsHitLimit {
+								limitNotice = " " + ui.Danger.Render("(Limit Reached)")
+							} else if win.StatusText != "" {
+								limitNotice = " " + ui.Muted.Render("("+win.StatusText+")")
+							}
+
+							output += fmt.Sprintf("  %s     %-13s %s  %s%s%s\n",
+								ui.Muted.Render(pipe),
+								ui.Muted.Render(win.Name+":"),
+								bar,
+								pctStyle(pctStr),
+								ui.Muted.Render(desc),
+								limitNotice,
+							)
+						}
 					}
 				}
 			}
