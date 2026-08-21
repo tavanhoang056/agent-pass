@@ -4,15 +4,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Account struct {
-	Name      string `yaml:"name"`
-	ConfigDir string `yaml:"config_dir"`
-	Email     string `yaml:"email,omitempty"`
-	TokenFile string `yaml:"token_file,omitempty"`
+	Name         string    `yaml:"name"`
+	ConfigDir    string    `yaml:"config_dir"`
+	Email        string    `yaml:"email,omitempty"`
+	TokenFile    string    `yaml:"token_file,omitempty"`
+	TotalQuota   int       `yaml:"total_quota,omitempty"`
+	UsedQuota    int       `yaml:"used_quota,omitempty"`
+	QuotaResetAt time.Time `yaml:"quota_reset_at,omitempty"`
+	QuotaModel   string    `yaml:"quota_model,omitempty"`
 }
 
 type AgentConfig struct {
@@ -74,6 +79,40 @@ func (c *Config) GetAgent(name string) *AgentConfig {
 	return nil
 }
 
+func (c *Config) GetAccount(agentName, accountName string) *Account {
+	agent := c.GetAgent(agentName)
+	if agent == nil {
+		return nil
+	}
+	for i := range agent.Accounts {
+		if agent.Accounts[i].Name == accountName {
+			return &agent.Accounts[i]
+		}
+	}
+	return nil
+}
+
+func (c *Config) UpdateAccountQuota(agentName, accountName string, total, used int, resetIn time.Duration, model string) error {
+	agent := c.GetAgent(agentName)
+	if agent == nil {
+		return fmt.Errorf("agent '%s' not found", agentName)
+	}
+	for i := range agent.Accounts {
+		if agent.Accounts[i].Name == accountName {
+			agent.Accounts[i].TotalQuota = total
+			agent.Accounts[i].UsedQuota = used
+			if resetIn > 0 {
+				agent.Accounts[i].QuotaResetAt = time.Now().Add(resetIn)
+			}
+			if model != "" {
+				agent.Accounts[i].QuotaModel = model
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("account '%s' not found for agent '%s'", accountName, agentName)
+}
+
 func (c *Config) SetActiveAccount(agentName, accountName string) error {
 	agent := c.GetAgent(agentName)
 	if agent == nil {
@@ -94,6 +133,11 @@ func (c *Config) SetActiveAccount(agentName, accountName string) error {
 }
 
 func (c *Config) AddAccount(agentName string, account Account) {
+	if account.TotalQuota == 0 {
+		account.TotalQuota = 300
+		account.UsedQuota = 0
+		account.QuotaResetAt = time.Now().Add(24 * time.Hour)
+	}
 	if c.Agents[agentName] == nil {
 		c.Agents[agentName] = &AgentConfig{
 			Active:   account.Name,

@@ -1,8 +1,10 @@
-﻿package quota
+package quota
 
 import (
 	"fmt"
 	"time"
+
+	"agent-pass/internal/config"
 )
 
 // QuotaInfo represents quota information for an account
@@ -12,17 +14,22 @@ type QuotaInfo struct {
 	Used        int
 	Total       int
 	ResetsIn    time.Duration
+	Model       string
 	Error       string
 }
 
 // Remaining returns remaining quota
 func (q *QuotaInfo) Remaining() int {
-	return q.Total - q.Used
+	rem := q.Total - q.Used
+	if rem < 0 {
+		return 0
+	}
+	return rem
 }
 
 // Percent returns the remaining percentage
 func (q *QuotaInfo) Percent() float64 {
-	if q.Total == 0 {
+	if q.Total <= 0 {
 		return 0
 	}
 	return float64(q.Remaining()) / float64(q.Total) * 100
@@ -31,7 +38,7 @@ func (q *QuotaInfo) Percent() float64 {
 // ResetsInString returns human readable reset time
 func (q *QuotaInfo) ResetsInString() string {
 	if q.ResetsIn <= 0 {
-		return "unknown"
+		return "now"
 	}
 	h := int(q.ResetsIn.Hours())
 	m := int(q.ResetsIn.Minutes()) % 60
@@ -41,18 +48,52 @@ func (q *QuotaInfo) ResetsInString() string {
 	return fmt.Sprintf("%dm", m)
 }
 
-// CheckQuota checks quota for an agent account
-// For v1 this is a placeholder that reads from config
-// Future versions will call actual agent APIs
-func CheckQuota(agentName, accountName string) (*QuotaInfo, error) {
-	// TODO: Implement actual API calls per agent
-	// For now, return placeholder data indicating API integration needed
+// CheckQuota checks and calculates quota for an agent account
+func CheckQuota(cfg *config.Config, agentName, accountName string) (*QuotaInfo, error) {
+	acc := cfg.GetAccount(agentName, accountName)
+	if acc == nil {
+		return nil, fmt.Errorf("account '%s' not found for agent '%s'", accountName, agentName)
+	}
+
+	total := acc.TotalQuota
+	used := acc.UsedQuota
+	resetAt := acc.QuotaResetAt
+	model := acc.QuotaModel
+
+	// Defaults if not explicitly configured
+	if total <= 0 {
+		if agentName == "antigravity" {
+			total = 300
+		} else if agentName == "codex" {
+			total = 500
+		} else {
+			total = 200
+		}
+	}
+
+	if resetAt.IsZero() {
+		resetAt = time.Now().Add(24 * time.Hour)
+	}
+
+	// Automatic rolling window reset if reset time has passed
+	if time.Now().After(resetAt) {
+		used = 0
+		resetAt = time.Now().Add(24 * time.Hour)
+		_ = cfg.UpdateAccountQuota(agentName, accountName, total, used, 24*time.Hour, model)
+		_ = cfg.Save()
+	}
+
+	resetsIn := time.Until(resetAt)
+	if resetsIn < 0 {
+		resetsIn = 0
+	}
+
 	return &QuotaInfo{
 		AgentName:   agentName,
 		AccountName: accountName,
-		Used:        0,
-		Total:       0,
-		ResetsIn:    0,
-		Error:       "API integration pending - use 'agpass quota --set' to configure manually",
+		Used:        used,
+		Total:       total,
+		ResetsIn:    resetsIn,
+		Model:       model,
 	}, nil
 }
