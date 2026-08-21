@@ -1,58 +1,38 @@
-﻿package ui
+package ui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Color palette — oh-my-pi inspired dark theme
+// Catppuccin Mocha / Modern Dark Palette
 var (
-	ColorPrimary   = lipgloss.Color("#7C3AED") // Purple
-	ColorSecondary = lipgloss.Color("#06B6D4") // Cyan
-	ColorSuccess   = lipgloss.Color("#22C55E") // Green
-	ColorWarning   = lipgloss.Color("#EAB308") // Yellow
-	ColorDanger    = lipgloss.Color("#EF4444") // Red
-	ColorMuted     = lipgloss.Color("#6B7280") // Gray
-	ColorText      = lipgloss.Color("#E5E7EB") // Light gray
-	ColorBright    = lipgloss.Color("#F9FAFB") // White
-	ColorDim       = lipgloss.Color("#374151") // Dark gray
-	ColorAccent    = lipgloss.Color("#A78BFA") // Light purple
-	ColorOrange    = lipgloss.Color("#F97316") // Orange
+	ColorPrimary   = lipgloss.Color("#89b4fa") // Blue
+	ColorSecondary = lipgloss.Color("#cba6f7") // Mauve
+	ColorSuccess   = lipgloss.Color("#a6e3a1") // Green
+	ColorWarning   = lipgloss.Color("#f9e2af") // Yellow
+	ColorDanger    = lipgloss.Color("#f38ba8") // Red
+	ColorMuted     = lipgloss.Color("#6c7086") // Overlay0
+	ColorEmptyBar  = lipgloss.Color("#313244") // Surface0
+	ColorBg        = lipgloss.Color("#1e1e2e") // Base
+	ColorBright    = lipgloss.Color("#cdd6f4") // Text
+	ColorAccent    = lipgloss.Color("#fab387") // Peach
+	ColorDim       = lipgloss.Color("#585b70") // Surface2
 )
 
-// Box styles
 var (
 	BoxBorder = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
+		BorderForeground(ColorMuted).
 		Padding(1, 2)
 
-	BoxBorderSuccess = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorSuccess).
-		Padding(1, 2)
-
-	BoxBorderDanger = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorDanger).
-		Padding(1, 2)
-)
-
-// Text styles
-var (
 	Title = lipgloss.NewStyle().
-		Foreground(ColorBright).
 		Bold(true).
-		MarginBottom(1)
+		Foreground(ColorPrimary)
 
 	Subtitle = lipgloss.NewStyle().
-		Foreground(ColorAccent).
-		Bold(true)
-
-	Label = lipgloss.NewStyle().
-		Foreground(ColorMuted)
-
-	Value = lipgloss.NewStyle().
-		Foreground(ColorText)
+		Foreground(ColorSecondary)
 
 	Success = lipgloss.NewStyle().
 		Foreground(ColorSuccess).
@@ -86,6 +66,9 @@ var (
 
 	AccountInactive = lipgloss.NewStyle().
 		Foreground(ColorMuted)
+
+	Label = lipgloss.NewStyle().
+		Foreground(ColorPrimary)
 )
 
 // Tree characters
@@ -93,25 +76,24 @@ const (
 	TreeBranch = "├─"
 	TreeLast   = "└─"
 	TreePipe   = "│ "
-	TreeSpace  = "  "
+	TreeSpace  = "   "
 )
 
 // Icons
 const (
 	IconCheck   = "✓"
-	IconCross   = "✗"
+	IconCross   = "✕"
 	IconArrow   = "→"
 	IconDot     = "●"
 	IconDotOpen = "○"
-	IconPass    = "🎟️"
-	IconSwitch  = "🔄"
 	IconQuota   = "📊"
+	IconSwitch  = "🔄"
 	IconAgent   = "🤖"
 	IconKey     = "🔑"
 	IconWarn    = "⚠"
 )
 
-// ProgressBar renders a colored progress bar
+// ProgressBar renders a clean progress bar
 func ProgressBar(percent float64, width int) string {
 	filled := int(percent / 100 * float64(width))
 	if filled > width {
@@ -133,15 +115,7 @@ func ProgressBar(percent float64, width int) string {
 	}
 
 	filledStyle := lipgloss.NewStyle().Foreground(color)
-	emptyStyle := lipgloss.NewStyle().Foreground(ColorDim)
+	emptyStyle := lipgloss.NewStyle().Foreground(ColorEmptyBar)
 
-	bar := ""
-	for i := 0; i < filled; i++ {
-		bar += filledStyle.Render("█")
-	}
-	for i := 0; i < empty; i++ {
-		bar += emptyStyle.Render("░")
-	}
-
-	return bar
+	return filledStyle.Render(strings.Repeat("█", filled)) + emptyStyle.Render(strings.Repeat("█", empty))
 }
