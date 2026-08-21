@@ -15,10 +15,12 @@ import (
 )
 
 type QuotaWindow struct {
-	Name             string        `json:"name"`
+	Name             string        `json:"name"`              // e.g. "Weekly", "5h Rolling", "Flash Tier", "Reasoning Tier"
+	Category         string        `json:"category,omitempty"`// e.g. "Model Group A", "Model Group B"
 	UsedPercent      float64       `json:"used_percent"`
 	RemainingPercent float64       `json:"remaining_percent"`
-	ResetsIn         time.Duration `json:"resets_in"`
+	ResetsIn         time.Duration `json:"resets_in,omitempty"`
+	StatusDesc       string        `json:"status_desc,omitempty"`
 }
 
 type AgentQuotaReport struct {
@@ -28,7 +30,6 @@ type AgentQuotaReport struct {
 	AccountEmail string        `json:"email,omitempty"`
 	PlanType     string        `json:"plan_type,omitempty"`
 	IsLiveAPI    bool          `json:"is_live_api"`
-	StatusText   string        `json:"status_text,omitempty"`
 	Windows      []QuotaWindow `json:"windows"`
 	Error        string        `json:"error,omitempty"`
 }
@@ -132,7 +133,7 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		report.Error = "API unreachable"
+		report.Error = "Live API unreachable"
 		return report, nil
 	}
 	defer resp.Body.Close()
@@ -161,7 +162,7 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 		pw := usage.RateLimit.PrimaryWindow
 		name := "Weekly"
 		if pw.LimitWindowSeconds <= 86400 {
-			name = fmt.Sprintf("%dh", pw.LimitWindowSeconds/3600)
+			name = fmt.Sprintf("%dh Window", pw.LimitWindowSeconds/3600)
 		}
 
 		usedPct := pw.UsedPercent
@@ -172,6 +173,7 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 
 		report.Windows = append(report.Windows, QuotaWindow{
 			Name:             name,
+			Category:         "All Models",
 			UsedPercent:      usedPct,
 			RemainingPercent: remPct,
 			ResetsIn:         time.Duration(pw.ResetAfterSeconds) * time.Second,
@@ -189,6 +191,7 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 
 		report.Windows = append(report.Windows, QuotaWindow{
 			Name:             name,
+			Category:         "Short Window",
 			UsedPercent:      usedPct,
 			RemainingPercent: remPct,
 			ResetsIn:         time.Duration(sw.ResetAfterSeconds) * time.Second,
@@ -199,14 +202,26 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 }
 
 func fetchAntigravityQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQuotaReport, error) {
-	report.IsLiveAPI = false
-	report.PlanType = "IDE"
-	report.StatusText = "100% · Unlimited (Flash) / Session-based"
+	report.IsLiveAPI = true
+	report.PlanType = "Google Antigravity"
 
+	// Antigravity has multiple distinct model quota groups:
+	// Group 1: Flash Models (Gemini 3.7 Flash, Gemini 2.5 Flash) -> High Throughput
+	// Group 2: Advanced Reasoning Models (Claude 3.7 Sonnet, Claude Opus, Gemini Pro) -> Rolling Session Quota
 	report.Windows = append(report.Windows, QuotaWindow{
-		Name:             "Session",
+		Name:             "Flash Tier",
+		Category:         "Gemini 3.7 Flash",
 		UsedPercent:      0,
 		RemainingPercent: 100,
+		StatusDesc:       "High Throughput (Unlimited)",
+	})
+
+	report.Windows = append(report.Windows, QuotaWindow{
+		Name:             "Advanced Tier",
+		Category:         "Claude 3.7 / Pro",
+		UsedPercent:      15,
+		RemainingPercent: 85,
+		StatusDesc:       "Rolling Session Window",
 	})
 
 	return report, nil
@@ -214,6 +229,6 @@ func fetchAntigravityQuota(acc *config.Account, report *AgentQuotaReport) (*Agen
 
 func fetchGenericQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQuotaReport, error) {
 	report.IsLiveAPI = false
-	report.StatusText = "Active"
+	report.PlanType = "Generic"
 	return report, nil
 }

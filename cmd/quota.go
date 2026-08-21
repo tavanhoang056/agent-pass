@@ -16,7 +16,7 @@ var quotaJsonOutput bool
 var quotaCmd = &cobra.Command{
 	Use:   "quota [agent]",
 	Short: "Check remaining quota for agent accounts",
-	Long:  "Inspect remaining quota and reset countdowns for configured AI coding agents.",
+	Long:  "Inspect model-group quotas (Flash, Reasoning, Weekly/Rolling) for configured AI agents.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -78,8 +78,7 @@ var quotaCmd = &cobra.Command{
 			return nil
 		}
 
-		// Concise, clean UI Rendering
-		header := ui.SectionHeader(ui.IconQuota, "Quota Overview")
+		header := ui.SectionHeader(ui.IconQuota, "Quota & Model Tiers Overview")
 		output := "\n" + header + "\n\n"
 
 		agentGroups := make(map[string][]*quota.AgentQuotaReport)
@@ -122,17 +121,7 @@ var quotaCmd = &cobra.Command{
 						ui.Muted.Render(tree), indicator, accLabel, planBadge)
 					output += fmt.Sprintf("  %s   %s\n",
 						ui.Muted.Render(pipe), ui.Warning.Render("⚠ "+rep.Error))
-				} else if len(rep.Windows) == 1 && rep.AgentName == "antigravity" {
-					// Single-line Antigravity format
-					bar := ui.ProgressBar(100, 10)
-					output += fmt.Sprintf("  %s %s %s  %s  %s\n",
-						ui.Muted.Render(tree),
-						indicator,
-						accLabel,
-						bar,
-						ui.Success.Render("100% · Active"),
-					)
-				} else if len(rep.Windows) > 0 {
+				} else {
 					output += fmt.Sprintf("  %s %s %s%s\n",
 						ui.Muted.Render(tree), indicator, accLabel, planBadge)
 
@@ -150,27 +139,34 @@ var quotaCmd = &cobra.Command{
 							pctStyle = func(s string) string { return ui.Danger.Render(s) }
 						}
 
-						resetStr := ""
+						desc := ""
 						if win.ResetsIn > 0 {
 							days := int(win.ResetsIn.Hours() / 24)
 							hours := int(win.ResetsIn.Hours()) % 24
 							mins := int(win.ResetsIn.Minutes()) % 60
 
 							if days > 0 {
-								resetStr = fmt.Sprintf(" · Resets in %dd %dh", days, hours)
+								desc = fmt.Sprintf(" · Resets in %dd %dh", days, hours)
 							} else if hours > 0 {
-								resetStr = fmt.Sprintf(" · Resets in %dh %dm", hours, mins)
+								desc = fmt.Sprintf(" · Resets in %dh %dm", hours, mins)
 							} else {
-								resetStr = fmt.Sprintf(" · Resets in %dm", mins)
+								desc = fmt.Sprintf(" · Resets in %dm", mins)
 							}
+						} else if win.StatusDesc != "" {
+							desc = fmt.Sprintf(" · %s", win.StatusDesc)
+						}
+
+						categoryLabel := ""
+						if win.Category != "" {
+							categoryLabel = fmt.Sprintf(" (%s)", win.Category)
 						}
 
 						output += fmt.Sprintf("  %s   %s: %s  %s%s\n",
 							ui.Muted.Render(pipe),
-							ui.Muted.Render(win.Name),
+							ui.Muted.Render(win.Name+categoryLabel),
 							bar,
 							pctStyle(pctStr),
-							ui.Muted.Render(resetStr),
+							ui.Muted.Render(desc),
 						)
 					}
 				}
