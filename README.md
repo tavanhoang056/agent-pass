@@ -54,7 +54,7 @@ Built with **Go**, `agent-pass` compiles into a single, standalone binary with z
 ### Method 1: Standard Go Install (Recommended)
 If you have Go (1.20+) installed:
 ```bash
-go install github.com/agent-pass/agent-pass@latest
+go install agent-pass@latest
 ```
 *(Make sure `$GOPATH/bin` or `%USERPROFILE%\go\bin` is in your system PATH).*
 
@@ -77,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/agent-pass/agent-pass/main/install.
 ### Method 3: Build from Source
 ```bash
 # Clone the repository
-git clone https://github.com/agent-pass/agent-pass.git
+git clone https://agent-pass.git
 cd agent-pass
 
 # Build using build scripts or Makefile

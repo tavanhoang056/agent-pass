@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/agent-pass/agent-pass/internal/ui"
+	"agent-pass/internal/ui"
 )
 
 const SkillContent = `---

@@ -27,7 +27,7 @@ if (Test-Path "main.go") {
     # Check if Go is installed
     if (Get-Command go -ErrorAction SilentlyContinue) {
         Write-Host "Installing via 'go install'..." -ForegroundColor Yellow
-        go install github.com/agent-pass/agent-pass@latest
+        go install agent-pass@latest
         $GopathBin = Join-Path (go env GOPATH) "bin\agpass.exe"
         if (Test-Path $GopathBin) {
             Copy-Item $GopathBin $TargetExe -Force

@@ -6,9 +6,9 @@ import (
 	"sort"
 
 	"github.com/spf13/cobra"
-	"github.com/agent-pass/agent-pass/internal/config"
-	"github.com/agent-pass/agent-pass/internal/quota"
-	"github.com/agent-pass/agent-pass/internal/ui"
+	"agent-pass/internal/config"
+	"agent-pass/internal/quota"
+	"agent-pass/internal/ui"
 )
 
 var quotaJsonOutput bool

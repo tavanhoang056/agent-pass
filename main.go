@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/agent-pass/agent-pass/cmd"
+	"agent-pass/cmd"
 )
 
 func main() {

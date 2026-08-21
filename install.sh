@@ -14,7 +14,7 @@ if [ -f "main.go" ]; then
     go build -ldflags="-s -w" -o "$TARGET" .
 elif command -v go >/dev/null 2>&1; then
     echo "Installing via 'go install'..."
-    go install github.com/agent-pass/agent-pass@latest
+    go install agent-pass@latest
     GOPATH_BIN="$(go env GOPATH)/bin/agpass"
     if [ -f "$GOPATH_BIN" ]; then
         cp "$GOPATH_BIN" "$TARGET"

@@ -6,9 +6,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"github.com/agent-pass/agent-pass/internal/agents"
-	"github.com/agent-pass/agent-pass/internal/config"
-	"github.com/agent-pass/agent-pass/internal/ui"
+	"agent-pass/internal/agents"
+	"agent-pass/internal/config"
+	"agent-pass/internal/ui"
 )
 
 var (

@@ -1,4 +1,4 @@
-module github.com/agent-pass/agent-pass
+module agent-pass
 
 go 1.26.7
 

@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/agent-pass/agent-pass/internal/config"
-	"github.com/agent-pass/agent-pass/internal/ui"
+	"agent-pass/internal/config"
+	"agent-pass/internal/ui"
 )
 
 var currentJsonOutput bool
