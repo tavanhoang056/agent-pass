@@ -100,10 +100,12 @@ var quotaCmd = &cobra.Command{
 				}
 
 				accLabel := ui.AccountInactive.Render(rep.AccountName)
-				indicator := ui.IconDotOpen
+				indicator := ui.Muted.Render(ui.IconDotOpen)
+				activeBadge := ""
 				if rep.IsActive {
 					accLabel = ui.AccountActive.Render(rep.AccountName)
 					indicator = ui.Success.Render(ui.IconDot)
+					activeBadge = " " + ui.Success.Render("← active")
 				}
 
 				planBadge := ""
@@ -117,13 +119,13 @@ var quotaCmd = &cobra.Command{
 				}
 
 				if rep.Error != "" {
-					output += fmt.Sprintf("  %s %s %s%s\n",
-						ui.Muted.Render(tree), indicator, accLabel, planBadge)
+					output += fmt.Sprintf("  %s %s %s%s%s\n",
+						ui.Muted.Render(tree), indicator, accLabel, activeBadge, planBadge)
 					output += fmt.Sprintf("  %s   %s\n",
 						ui.Muted.Render(pipe), ui.Warning.Render("⚠ "+rep.Error))
 				} else {
-					output += fmt.Sprintf("  %s %s %s%s\n",
-						ui.Muted.Render(tree), indicator, accLabel, planBadge)
+					output += fmt.Sprintf("  %s %s %s%s%s\n",
+						ui.Muted.Render(tree), indicator, accLabel, activeBadge, planBadge)
 
 					for _, g := range rep.Groups {
 						output += fmt.Sprintf("  %s   %s\n",
