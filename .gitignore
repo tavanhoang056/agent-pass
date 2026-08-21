@@ -1,0 +1,30 @@
+# Binaries and build output
+bin/
+dist/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Go workspace & vendor
+vendor/
+
+# User configurations & backups
+.agpass/
+*.local
+
+# Environment & credentials
+.env
+.env.local
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
