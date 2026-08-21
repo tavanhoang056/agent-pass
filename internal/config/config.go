@@ -9,15 +9,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type WindowLimitConfig struct {
+	RemainingPercent float64       `yaml:"remaining_percent"`
+	ResetIn          time.Duration `yaml:"reset_in,omitempty"`
+	ResetAt          time.Time     `yaml:"reset_at,omitempty"`
+	StatusText       string        `yaml:"status_text,omitempty"`
+}
+
+type ModelGroupConfig struct {
+	Weekly WindowLimitConfig `yaml:"weekly"`
+	FiveH  WindowLimitConfig `yaml:"five_hour"`
+}
+
 type Account struct {
-	Name         string    `yaml:"name"`
-	ConfigDir    string    `yaml:"config_dir"`
-	Email        string    `yaml:"email,omitempty"`
-	TokenFile    string    `yaml:"token_file,omitempty"`
-	TotalQuota   int       `yaml:"total_quota,omitempty"`
-	UsedQuota    int       `yaml:"used_quota,omitempty"`
-	QuotaResetAt time.Time `yaml:"quota_reset_at,omitempty"`
-	QuotaModel   string    `yaml:"quota_model,omitempty"`
+	Name         string                      `yaml:"name"`
+	ConfigDir    string                      `yaml:"config_dir"`
+	Email        string                      `yaml:"email,omitempty"`
+	TokenFile    string                      `yaml:"token_file,omitempty"`
+	ModelGroups  map[string]ModelGroupConfig `yaml:"model_groups,omitempty"`
 }
 
 type AgentConfig struct {
@@ -92,27 +101,6 @@ func (c *Config) GetAccount(agentName, accountName string) *Account {
 	return nil
 }
 
-func (c *Config) UpdateAccountQuota(agentName, accountName string, total, used int, resetIn time.Duration, model string) error {
-	agent := c.GetAgent(agentName)
-	if agent == nil {
-		return fmt.Errorf("agent '%s' not found", agentName)
-	}
-	for i := range agent.Accounts {
-		if agent.Accounts[i].Name == accountName {
-			agent.Accounts[i].TotalQuota = total
-			agent.Accounts[i].UsedQuota = used
-			if resetIn > 0 {
-				agent.Accounts[i].QuotaResetAt = time.Now().Add(resetIn)
-			}
-			if model != "" {
-				agent.Accounts[i].QuotaModel = model
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("account '%s' not found for agent '%s'", accountName, agentName)
-}
-
 func (c *Config) SetActiveAccount(agentName, accountName string) error {
 	agent := c.GetAgent(agentName)
 	if agent == nil {
@@ -133,10 +121,8 @@ func (c *Config) SetActiveAccount(agentName, accountName string) error {
 }
 
 func (c *Config) AddAccount(agentName string, account Account) {
-	if account.TotalQuota == 0 {
-		account.TotalQuota = 300
-		account.UsedQuota = 0
-		account.QuotaResetAt = time.Now().Add(24 * time.Hour)
+	if account.ModelGroups == nil {
+		account.ModelGroups = make(map[string]ModelGroupConfig)
 	}
 	if c.Agents[agentName] == nil {
 		c.Agents[agentName] = &AgentConfig{

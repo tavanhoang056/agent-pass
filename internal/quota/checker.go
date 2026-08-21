@@ -14,7 +14,6 @@ import (
 	"agent-pass/internal/config"
 )
 
-// QuotaWindow represents a single limit window (5-hour, weekly, etc.)
 type QuotaWindow struct {
 	Name             string        `json:"name"`              // e.g. "Weekly Limit", "5-Hour Limit"
 	RemainingPercent float64       `json:"remaining_percent"`// e.g. 95, 76, 66, 0
@@ -23,13 +22,11 @@ type QuotaWindow struct {
 	IsHitLimit       bool          `json:"is_hit_limit,omitempty"`
 }
 
-// ModelGroupQuota represents a group of models with their own quota limits
 type ModelGroupQuota struct {
-	GroupName string        `json:"group_name"` // e.g. "Gemini Models", "Claude and GPT models"
+	GroupName string        `json:"group_name"`
 	Windows   []QuotaWindow `json:"windows"`
 }
 
-// AgentQuotaReport represents the comprehensive quota report for an agent account
 type AgentQuotaReport struct {
 	AgentName    string            `json:"agent"`
 	AccountName  string            `json:"account_name"`
@@ -215,42 +212,95 @@ func fetchAntigravityQuota(acc *config.Account, report *AgentQuotaReport) (*Agen
 	report.IsLiveAPI = true
 	report.PlanType = "Antigravity Pro/Plus"
 
-	// Antigravity Structure matches the exact IDE quota breakdown:
-	// Group 1: Gemini Models
-	// Group 2: Claude and GPT models
+	// Check if configured in account ModelGroups
+	geminiGroup, hasGemini := acc.ModelGroups["gemini"]
+	claudeGroup, hasClaude := acc.ModelGroups["claude_gpt"]
 
-	// Gemini Models Group
+	if !hasGemini {
+		geminiGroup = config.ModelGroupConfig{
+			Weekly: config.WindowLimitConfig{
+				RemainingPercent: 95,
+				ResetAt:          time.Now().Add(6*24*time.Hour + 22*time.Hour),
+			},
+			FiveH: config.WindowLimitConfig{
+				RemainingPercent: 76,
+				ResetAt:          time.Now().Add(3*time.Hour + 8*time.Minute),
+			},
+		}
+	}
+
+	if !hasClaude {
+		claudeGroup = config.ModelGroupConfig{
+			Weekly: config.WindowLimitConfig{
+				RemainingPercent: 66,
+				ResetAt:          time.Now().Add(3*time.Hour + 47*time.Minute),
+				StatusText:       "5h limit hit",
+			},
+			FiveH: config.WindowLimitConfig{
+				RemainingPercent: 0,
+				ResetAt:          time.Now().Add(3*time.Hour + 47*time.Minute),
+				StatusText:       "Limit Reached",
+			},
+		}
+	}
+
+	// Calculate dynamic countdowns from ResetAt
+	geminiWeeklyReset := time.Until(geminiGroup.Weekly.ResetAt)
+	if geminiWeeklyReset < 0 {
+		geminiWeeklyReset = 0
+	}
+	gemini5hReset := time.Until(geminiGroup.FiveH.ResetAt)
+	if gemini5hReset < 0 {
+		gemini5hReset = 0
+	}
+
+	claudeWeeklyReset := time.Until(claudeGroup.Weekly.ResetAt)
+	if claudeWeeklyReset < 0 {
+		claudeWeeklyReset = 0
+	}
+	claude5hReset := time.Until(claudeGroup.FiveH.ResetAt)
+	if claude5hReset < 0 {
+		claude5hReset = 0
+	}
+
+	// Build Gemini Models Group
 	report.Groups = append(report.Groups, ModelGroupQuota{
 		GroupName: "Gemini Models",
 		Windows: []QuotaWindow{
 			{
 				Name:             "Weekly Limit",
-				RemainingPercent: 95,
-				ResetsIn:         6*24*time.Hour + 22*time.Hour,
+				RemainingPercent: geminiGroup.Weekly.RemainingPercent,
+				ResetsIn:         geminiWeeklyReset,
+				StatusText:       geminiGroup.Weekly.StatusText,
+				IsHitLimit:       geminiGroup.Weekly.RemainingPercent == 0,
 			},
 			{
 				Name:             "5-Hour Limit",
-				RemainingPercent: 76,
-				ResetsIn:         3*time.Hour + 8*time.Minute,
+				RemainingPercent: geminiGroup.FiveH.RemainingPercent,
+				ResetsIn:         gemini5hReset,
+				StatusText:       geminiGroup.FiveH.StatusText,
+				IsHitLimit:       geminiGroup.FiveH.RemainingPercent == 0,
 			},
 		},
 	})
 
-	// Claude and GPT models Group
+	// Build Claude and GPT models Group
 	report.Groups = append(report.Groups, ModelGroupQuota{
 		GroupName: "Claude and GPT models",
 		Windows: []QuotaWindow{
 			{
 				Name:             "Weekly Limit",
-				RemainingPercent: 66,
-				ResetsIn:         3*time.Hour + 47*time.Minute,
-				StatusText:       "5h limit hit",
+				RemainingPercent: claudeGroup.Weekly.RemainingPercent,
+				ResetsIn:         claudeWeeklyReset,
+				StatusText:       claudeGroup.Weekly.StatusText,
+				IsHitLimit:       claudeGroup.Weekly.RemainingPercent == 0,
 			},
 			{
 				Name:             "5-Hour Limit",
-				RemainingPercent: 0,
-				ResetsIn:         3*time.Hour + 47*time.Minute,
-				IsHitLimit:       true,
+				RemainingPercent: claudeGroup.FiveH.RemainingPercent,
+				ResetsIn:         claude5hReset,
+				StatusText:       claudeGroup.FiveH.StatusText,
+				IsHitLimit:       claudeGroup.FiveH.RemainingPercent == 0,
 			},
 		},
 	})
