@@ -3,12 +3,17 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
+	"strings"
+	"sync"
+	"time"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
-	"agent-pass/internal/config"
-	"agent-pass/internal/quota"
-	"agent-pass/internal/ui"
+	"agpass/internal/config"
+	"agpass/internal/quota"
+	"agpass/internal/ui"
 )
 
 var quotaJsonOutput bool
@@ -55,21 +60,86 @@ var quotaCmd = &cobra.Command{
 			agentNames = []string{filterAgent}
 		}
 
-		var reports []*quota.AgentQuotaReport
+		type checkTask struct {
+			agentName   string
+			accountName string
+		}
+
+		var tasks []checkTask
 		for _, name := range agentNames {
 			agent := cfg.GetAgent(name)
 			for _, acc := range agent.Accounts {
-				rep, err := quota.CheckAgentQuota(cfg, name, acc.Name)
-				if err != nil {
-					reports = append(reports, &quota.AgentQuotaReport{
-						AgentName:   name,
-						AccountName: acc.Name,
-						Error:       err.Error(),
-					})
-					continue
-				}
-				reports = append(reports, rep)
+				tasks = append(tasks, checkTask{
+					agentName:   name,
+					accountName: acc.Name,
+				})
 			}
+		}
+
+		type checkResult struct {
+			idx    int
+			report *quota.AgentQuotaReport
+		}
+
+		reports := make([]*quota.AgentQuotaReport, len(tasks))
+		resChan := make(chan checkResult, len(tasks))
+
+		isTTY := (isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())) && !quotaJsonOutput
+
+		// Start spinner if in interactive terminal
+		doneSpinner := make(chan struct{})
+		if isTTY {
+			go func() {
+				spinnerChars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+				i := 0
+				ticker := time.NewTicker(75 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-doneSpinner:
+						fmt.Print("\r" + strings.Repeat(" ", 60) + "\r")
+						return
+					case <-ticker.C:
+						spin := ui.Subtitle.Render(spinnerChars[i%len(spinnerChars)])
+						msg := ui.Muted.Render(fmt.Sprintf(" Fetching quota metrics for %d account(s)...", len(tasks)))
+						fmt.Printf("\r  %s%s", spin, msg)
+						i++
+					}
+				}
+			}()
+		}
+
+		var wg sync.WaitGroup
+		for i, t := range tasks {
+			wg.Add(1)
+			go func(idx int, task checkTask) {
+				defer wg.Done()
+				rep, err := quota.CheckAgentQuota(cfg, task.agentName, task.accountName)
+				if err != nil {
+					resChan <- checkResult{
+						idx: idx,
+						report: &quota.AgentQuotaReport{
+							AgentName:   task.agentName,
+							AccountName: task.accountName,
+							Error:       err.Error(),
+						},
+					}
+					return
+				}
+				resChan <- checkResult{idx: idx, report: rep}
+			}(i, t)
+		}
+
+		wg.Wait()
+		close(resChan)
+
+		if isTTY {
+			close(doneSpinner)
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		for res := range resChan {
+			reports[res.idx] = res.report
 		}
 
 		if quotaJsonOutput {

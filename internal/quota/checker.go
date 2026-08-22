@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"agent-pass/internal/config"
+	"agpass/internal/config"
 	_ "modernc.org/sqlite"
 )
 
@@ -23,6 +23,15 @@ const (
 	GoogleOAuthTokenURL = "https://oauth2.googleapis.com/token"
 	CloudCodeBaseURL    = "https://daily-cloudcode-pa.googleapis.com"
 )
+
+var httpClient = &http.Client{
+	Timeout: 7 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	},
+}
 
 var (
 	xorGoogleCID = []byte{107, 106, 109, 107, 106, 106, 108, 106, 108, 106, 111, 99, 107, 119, 46, 55, 50, 41, 41, 51, 52, 104, 50, 104, 107, 54, 57, 40, 63, 104, 105, 111, 44, 46, 53, 54, 53, 48, 50, 110, 61, 110, 106, 105, 63, 42, 116, 59, 42, 42, 41, 116, 61, 53, 53, 61, 54, 63, 47, 41, 63, 40, 57, 53, 52, 46, 63, 52, 46, 116, 57, 53, 55}
@@ -123,13 +132,13 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 	home, _ := os.UserHomeDir()
 
 	candidatePaths := []string{}
+	if report.IsActive {
+		candidatePaths = append(candidatePaths, filepath.Join(home, ".codex", "auth.json"))
+	}
 	if acc.ConfigDir != "" {
 		candidatePaths = append(candidatePaths, filepath.Join(acc.ConfigDir, "auth.json"))
 	}
 	candidatePaths = append(candidatePaths, filepath.Join(home, ".agpass", "codex", acc.Name, "auth.json"))
-	if report.IsActive {
-		candidatePaths = append(candidatePaths, filepath.Join(home, ".codex", "auth.json"))
-	}
 
 	var authData []byte
 	for _, p := range candidatePaths {
@@ -178,8 +187,7 @@ func fetchCodexLiveQuota(acc *config.Account, report *AgentQuotaReport) (*AgentQ
 	req.Header.Set("Authorization", "Bearer "+auth.Tokens.AccessToken)
 	req.Header.Set("User-Agent", "codex-cli")
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		report.Error = "Live API unreachable"
 		return report, nil
@@ -259,8 +267,9 @@ type googleTokenResponse struct {
 }
 
 type cloudCodeModelInfo struct {
-	DisplayName *string `json:"displayName"`
-	QuotaInfo   *struct {
+	DisplayName   *string `json:"displayName"`
+	ModelProvider string  `json:"modelProvider"`
+	QuotaInfo     *struct {
 		RemainingFraction *float64 `json:"remainingFraction"`
 		ResetTime         *string  `json:"resetTime"`
 	} `json:"quotaInfo"`
@@ -268,6 +277,18 @@ type cloudCodeModelInfo struct {
 
 type cloudCodeFetchModelsResponse struct {
 	Models map[string]cloudCodeModelInfo `json:"models"`
+}
+
+// detectWindowName guesses whether the API-returned quota window is a
+// 5-hour rolling window or a weekly window based on the reset time.
+// The Cloud Code API returns the MOST RESTRICTIVE window — if the
+// 5-hour limit is lower, we get that; if the weekly limit is lower,
+// we get that instead.
+func detectWindowName(resetIn time.Duration) string {
+	if resetIn > 5*time.Hour+30*time.Minute {
+		return "Weekly Limit"
+	}
+	return "5-Hour Limit"
 }
 
 func readVarint(data []byte, offset int) (uint64, int, error) {
@@ -377,8 +398,7 @@ func fetchAntigravityLiveQuota(acc *config.Account, report *AgentQuotaReport) (*
 	form.Set("refresh_token", refreshToken)
 	form.Set("grant_type", "refresh_token")
 
-	client := &http.Client{Timeout: 8 * time.Second}
-	tokenResp, err := client.PostForm(GoogleOAuthTokenURL, form)
+	tokenResp, err := httpClient.PostForm(GoogleOAuthTokenURL, form)
 	if err != nil {
 		report.Error = fmt.Sprintf("Failed to refresh Google token: %v", err)
 		return report, nil
@@ -421,14 +441,16 @@ func fetchAntigravityLiveQuota(acc *config.Account, report *AgentQuotaReport) (*
 
 	var projectID string
 	planType := "Google Antigravity"
-	if loadRes, err := client.Do(loadReq); err == nil {
+	if loadRes, err := httpClient.Do(loadReq); err == nil {
 		defer loadRes.Body.Close()
 		var loadData struct {
 			CurrentTier *struct {
 				Name string `json:"name"`
+				ID   string `json:"id"`
 			} `json:"currentTier"`
 			PaidTier *struct {
 				Name string `json:"name"`
+				ID   string `json:"id"`
 			} `json:"paidTier"`
 			Project interface{} `json:"cloudaicompanionProject"`
 		}
@@ -457,7 +479,7 @@ func fetchAntigravityLiveQuota(acc *config.Account, report *AgentQuotaReport) (*
 	modelsReq, _ := http.NewRequest("POST", CloudCodeBaseURL+"/v1internal:fetchAvailableModels", bytes.NewReader(modelsBody))
 	modelsReq.Header = headers
 
-	modelsRes, err := client.Do(modelsReq)
+	modelsRes, err := httpClient.Do(modelsReq)
 	if err != nil {
 		report.Error = fmt.Sprintf("Cloud Code API unreachable: %v", err)
 		return report, nil
@@ -478,86 +500,90 @@ func fetchAntigravityLiveQuota(acc *config.Account, report *AgentQuotaReport) (*
 	report.IsLiveAPI = true
 	report.PlanType = planType
 
-	var geminiRemaining float64 = 100.0
-	var geminiResetIn time.Duration = 0
+	// Group models by provider and find quota per group.
+	// The API returns the MOST RESTRICTIVE quota window per model.
+	// All models within the same provider share the same quota values.
+	type groupQuota struct {
+		remaining float64
+		resetIn   time.Duration
+		hitLimit  bool
+		found     bool
+	}
 
-	var claudeRemaining float64 = 0.0
-	var claudeResetIn time.Duration = 0
-	var claudeHitLimit bool = false
+	gemini := &groupQuota{remaining: 100.0}
+	claudeGPT := &groupQuota{remaining: 100.0}
 
-	for mID, mInfo := range modelsData.Models {
-		if strings.HasPrefix(mID, "gemini-3") || strings.HasPrefix(mID, "gemini-2") {
-			if mInfo.QuotaInfo != nil {
-				if mInfo.QuotaInfo.RemainingFraction != nil {
-					geminiRemaining = *mInfo.QuotaInfo.RemainingFraction * 100.0
+	for _, mInfo := range modelsData.Models {
+		if mInfo.QuotaInfo == nil {
+			continue
+		}
+
+		var grp *groupQuota
+		switch mInfo.ModelProvider {
+		case "MODEL_PROVIDER_GOOGLE":
+			grp = gemini
+		case "MODEL_PROVIDER_ANTHROPIC", "MODEL_PROVIDER_OPENAI":
+			grp = claudeGPT
+		default:
+			continue
+		}
+
+		if grp.found {
+			continue // All models in a provider share the same quota
+		}
+
+		grp.found = true
+
+		if mInfo.QuotaInfo.RemainingFraction != nil {
+			grp.remaining = *mInfo.QuotaInfo.RemainingFraction * 100.0
+		} else {
+			grp.remaining = 0.0
+			grp.hitLimit = true
+		}
+
+		if mInfo.QuotaInfo.ResetTime != nil {
+			if t, err := time.Parse(time.RFC3339, *mInfo.QuotaInfo.ResetTime); err == nil {
+				grp.resetIn = time.Until(t)
+				if grp.resetIn < 0 {
+					grp.resetIn = 0
 				}
-				if mInfo.QuotaInfo.ResetTime != nil {
-					if t, err := time.Parse(time.RFC3339, *mInfo.QuotaInfo.ResetTime); err == nil {
-						geminiResetIn = time.Until(t)
-						if geminiResetIn < 0 {
-							geminiResetIn = 0
-						}
-					}
-				}
-			}
-		} else if strings.HasPrefix(mID, "claude") || strings.HasPrefix(mID, "gpt") {
-			if mInfo.QuotaInfo != nil {
-				if mInfo.QuotaInfo.RemainingFraction != nil {
-					claudeRemaining = *mInfo.QuotaInfo.RemainingFraction * 100.0
-				} else {
-					claudeRemaining = 0.0
-					claudeHitLimit = true
-				}
-				if mInfo.QuotaInfo.ResetTime != nil {
-					if t, err := time.Parse(time.RFC3339, *mInfo.QuotaInfo.ResetTime); err == nil {
-						claudeResetIn = time.Until(t)
-						if claudeResetIn < 0 {
-							claudeResetIn = 0
-						}
-						if claudeRemaining == 0 {
-							claudeHitLimit = true
-						}
-					}
+				if grp.remaining == 0 {
+					grp.hitLimit = true
 				}
 			}
 		}
 	}
 
+	// Build Gemini group
+	geminiWindowName := detectWindowName(gemini.resetIn)
 	report.Groups = append(report.Groups, ModelGroupQuota{
 		GroupName: "Gemini Models",
 		Windows: []QuotaWindow{
 			{
-				Name:             "Weekly Limit",
-				RemainingPercent: 95.0,
-				ResetsIn:         geminiResetIn + 6*24*time.Hour,
-			},
-			{
-				Name:             "5-Hour Limit",
-				RemainingPercent: geminiRemaining,
-				ResetsIn:         geminiResetIn,
+				Name:             geminiWindowName,
+				RemainingPercent: gemini.remaining,
+				ResetsIn:         gemini.resetIn,
+				IsHitLimit:       gemini.hitLimit || gemini.remaining == 0,
 			},
 		},
 	})
 
+	// Build Claude & GPT group
+	claudeWindowName := detectWindowName(claudeGPT.resetIn)
 	claudeStatus := ""
-	if claudeHitLimit {
-		claudeStatus = "5h limit hit"
+	if claudeGPT.hitLimit {
+		claudeStatus = "Limit Reached"
 	}
 
 	report.Groups = append(report.Groups, ModelGroupQuota{
-		GroupName: "Claude and GPT models",
+		GroupName: "Claude and GPT Models",
 		Windows: []QuotaWindow{
 			{
-				Name:             "Weekly Limit",
-				RemainingPercent: 66.0,
-				ResetsIn:         claudeResetIn,
+				Name:             claudeWindowName,
+				RemainingPercent: claudeGPT.remaining,
+				ResetsIn:         claudeGPT.resetIn,
+				IsHitLimit:       claudeGPT.hitLimit || claudeGPT.remaining == 0,
 				StatusText:       claudeStatus,
-			},
-			{
-				Name:             "5-Hour Limit",
-				RemainingPercent: claudeRemaining,
-				ResetsIn:         claudeResetIn,
-				IsHitLimit:       claudeHitLimit,
 			},
 		},
 	})

@@ -6,8 +6,8 @@ import (
 	"sort"
 
 	"github.com/spf13/cobra"
-	"agent-pass/internal/config"
-	"agent-pass/internal/ui"
+	"agpass/internal/config"
+	"agpass/internal/ui"
 )
 
 var listJsonOutput bool

@@ -1,4 +1,4 @@
-module agent-pass
+module agpass
 
 go 1.26.7
 

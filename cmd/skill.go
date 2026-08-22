@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"agent-pass/internal/ui"
+	"agpass/internal/ui"
 )
 
 const SkillContent = `---
-name: agent-pass
+name: agpass
 description: Manage, check quotas, and switch user accounts/profiles for AI coding agents (Antigravity, Codex, etc.).
 ---
 
-# Agent Pass Skill (agpass)
+# agpass - AI Agent Account & Quota Switcher
 
 Use ` + "`agpass`" + ` to manage, inspect, and switch accounts/credentials for AI coding agents.
 
@@ -60,7 +60,7 @@ var (
 var installSkillCmd = &cobra.Command{
 	Use:   "install-skill",
 	Short: "Install AI Agent skill for Antigravity and other agents",
-	Long:  "Installs the agent-pass SKILL.md into global or workspace agent configuration roots so AI agents can discover and use agpass autonomously.",
+	Long:  "Installs the agpass SKILL.md into global or workspace agent configuration roots so AI agents can discover and use agpass autonomously.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -71,11 +71,11 @@ var installSkillCmd = &cobra.Command{
 		var targetPaths []string
 
 		// Global Antigravity skill path
-		globalSkillDir := filepath.Join(home, ".gemini", "config", "skills", "agent-pass")
+		globalSkillDir := filepath.Join(home, ".gemini", "config", "skills", "agpass")
 		targetPaths = append(targetPaths, filepath.Join(globalSkillDir, "SKILL.md"))
 
 		// Workspace skill path
-		workspaceSkillDir := filepath.Join(".agents", "skills", "agent-pass")
+		workspaceSkillDir := filepath.Join(".agents", "skills", "agpass")
 		targetPaths = append(targetPaths, filepath.Join(workspaceSkillDir, "SKILL.md"))
 
 		for _, path := range targetPaths {

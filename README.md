@@ -1,4 +1,4 @@
-# agent-pass 🎟️
+# agpass 🎟️
 
 > **The ultra-fast multi-account & quota manager for AI coding agents** (*Google Antigravity*, *OpenAI Codex*, and more).
 
@@ -6,9 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
 
-`agent-pass` (`agpass`) is a single-purpose, lightweight CLI tool engineered to solve a common developer bottleneck: **switching accounts, credentials, and managing quotas across AI coding agents** without repeated logins or messy credential overrides.
+`agpass` is a single-purpose, lightweight CLI tool engineered to solve a common developer bottleneck: **switching accounts, credentials, and managing quotas across AI coding agents** without repeated logins or messy credential overrides.
 
-Built with **Go**, `agent-pass` compiles into a single, standalone binary with zero external runtime requirements. It offers a sleek dark-themed terminal UI for developers and full headless JSON commands for autonomous AI agents.
+Built with **Go**, `agpass` compiles into a single, standalone binary with zero external runtime requirements. It offers a sleek dark-themed terminal UI for developers and full headless JSON commands for autonomous AI agents.
 
 ---
 
@@ -34,7 +34,7 @@ Built with **Go**, `agent-pass` compiles into a single, standalone binary with z
 ## 🎯 The Problem & Solution
 
 - **The Problem:** Developers often maintain multiple accounts for AI coding assistants (e.g., personal vs. work accounts, secondary accounts to bypass quota/rate limits). Logging out and re-authenticating disrupts coding workflows.
-- **The Solution:** `agent-pass` isolates credential sessions into organized profiles, enabling instantaneous, safe switching in a single command or keystroke.
+- **The Solution:** `agpass` isolates credential sessions into organized profiles, enabling instantaneous, safe switching in a single command or keystroke.
 
 ---
 
@@ -54,7 +54,7 @@ Built with **Go**, `agent-pass` compiles into a single, standalone binary with z
 ### Method 1: Standard Go Install (Recommended)
 If you have Go (1.20+) installed:
 ```bash
-go install agent-pass@latest
+go install agpass@latest
 ```
 *(Make sure `$GOPATH/bin` or `%USERPROFILE%\go\bin` is in your system PATH).*
 
@@ -64,12 +64,12 @@ go install agent-pass@latest
 
 #### Windows (PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/agent-pass/agent-pass/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/agpass/agpass/main/install.ps1 | iex
 ```
 
 #### macOS / Linux
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agent-pass/agent-pass/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agpass/agpass/main/install.sh | bash
 ```
 
 ---
@@ -77,8 +77,8 @@ curl -fsSL https://raw.githubusercontent.com/agent-pass/agent-pass/main/install.
 ### Method 3: Build from Source
 ```bash
 # Clone the repository
-git clone https://agent-pass.git
-cd agent-pass
+git clone https://github.com/agpass/agpass.git
+cd agpass
 
 # Build using build scripts or Makefile
 # Windows:
@@ -150,7 +150,7 @@ agpass add antigravity --name personal --email user@example.com --non-interactiv
 
 ## 🧠 AI Agent Skill Integration
 
-`agent-pass` includes an autonomous skill definition (`SKILL.md`) that allows AI coding assistants to automatically detect rate limits and switch accounts.
+`agpass` includes an autonomous skill definition (`SKILL.md`) that allows AI coding assistants to automatically detect rate limits and switch accounts.
 
 To install the skill into your global and workspace agent directories:
 ```bash
@@ -158,15 +158,15 @@ agpass install-skill
 ```
 
 This installs the skill to:
-- `~/.gemini/config/skills/agent-pass/SKILL.md` *(Antigravity Global Config)*
-- `.agents/skills/agent-pass/SKILL.md` *(Workspace Config)*
+- `~/.gemini/config/skills/agpass/SKILL.md` *(Antigravity Global Config)*
+- `.agents/skills/agpass/SKILL.md` *(Workspace Config)*
 
 ---
 
 ## 📁 Project Structure
 
 ```
-agent-pass/
+agpass/
 ├── cmd/                    # Cobra CLI commands (root, list, switch, quota, add, current, setup, skill)
 ├── internal/
 │   ├── agents/             # Agent registry and switch engine (Antigravity, Codex)
@@ -223,4 +223,4 @@ agents:
 
 ## 📄 License
 
-MIT License © 2026 agent-pass
+MIT License © 2026 agpass

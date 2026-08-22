@@ -1,15 +1,15 @@
 <#
 .SYNOPSIS
-    Installs agent-pass (agpass) globally and configures PATH and AI Agent skills.
+    Installs agpass globally and configures PATH and AI Agent skills.
 .DESCRIPTION
     Works both locally from the repository and as a remote one-liner:
-    irm https://raw.githubusercontent.com/agent-pass/agent-pass/main/install.ps1 | iex
+    irm https://raw.githubusercontent.com/agpass/agpass/main/install.ps1 | iex
 #>
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "═══════════════════════════════════════════" -ForegroundColor Magenta
-Write-Host "   Installing agent-pass (agpass) CLI      " -ForegroundColor Cyan
+Write-Host "         Installing agpass CLI             " -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════`n" -ForegroundColor Magenta
 
 # Refresh PATH in current session
@@ -27,7 +27,7 @@ if (Test-Path "main.go") {
     # Check if Go is installed
     if (Get-Command go -ErrorAction SilentlyContinue) {
         Write-Host "Installing via 'go install'..." -ForegroundColor Yellow
-        go install agent-pass@latest
+        go install agpass@latest
         $GopathBin = Join-Path (go env GOPATH) "bin\agpass.exe"
         if (Test-Path $GopathBin) {
             Copy-Item $GopathBin $TargetExe -Force

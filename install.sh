@@ -2,7 +2,7 @@
 set -e
 
 echo -e "\033[35m═══════════════════════════════════════════\033[0m"
-echo -e "\033[36m   Installing agent-pass (agpass) CLI      \033[0m"
+echo -e "\033[36m         Installing agpass CLI             \033[0m"
 echo -e "\033[35m═══════════════════════════════════════════\033[0m\n"
 
 INSTALL_DIR="$HOME/.agpass/bin"
@@ -14,7 +14,7 @@ if [ -f "main.go" ]; then
     go build -ldflags="-s -w" -o "$TARGET" .
 elif command -v go >/dev/null 2>&1; then
     echo "Installing via 'go install'..."
-    go install agent-pass@latest
+    go install agpass@latest
     GOPATH_BIN="$(go env GOPATH)/bin/agpass"
     if [ -f "$GOPATH_BIN" ]; then
         cp "$GOPATH_BIN" "$TARGET"

@@ -1,9 +1,9 @@
 ---
-name: agent-pass
+name: agpass
 description: Manage, check quotas, and switch user accounts/profiles for AI coding agents (Antigravity, Codex, etc.).
 ---
 
-# Agent Pass Skill (agpass)
+# agpass - AI Agent Account & Quota Switcher
 
 Use `agpass` to manage, inspect, and switch accounts/credentials for AI coding agents.
 

@@ -7,9 +7,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"agent-pass/internal/agents"
-	"agent-pass/internal/config"
-	"agent-pass/internal/ui"
+	"agpass/internal/agents"
+	"agpass/internal/config"
+	"agpass/internal/ui"
 )
 
 var (
@@ -26,13 +26,64 @@ type SwitchResult struct {
 }
 
 var switchCmd = &cobra.Command{
-	Use:   "switch <agent> [account]",
+	Use:   "switch [agent] [account]",
 	Short: "Switch account for an AI agent (interactive or headless)",
 	Long: `Switch to a different account for the specified AI agent.
 Can be run interactively (with arrow keys) or in headless mode by providing the account name or using --to / --account flag.`,
-	Args: cobra.RangeArgs(1, 2),
+	Args: cobra.RangeArgs(0, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		agentName := args[0]
+		cfg, err := config.Load()
+		if err != nil {
+			if switchJsonOutput {
+				res, _ := json.Marshal(SwitchResult{Success: false, Message: fmt.Sprintf("failed to load config: %v", err)})
+				fmt.Println(string(res))
+				return nil
+			}
+			fmt.Print(ui.ErrorMessage(fmt.Sprintf("Failed to load config: %v", err)))
+			return nil
+		}
+
+		var agentName string
+		if len(args) > 0 {
+			agentName = args[0]
+		} else {
+			configuredAgents := cfg.ListAgents()
+			if len(configuredAgents) == 0 {
+				if switchJsonOutput {
+					res, _ := json.Marshal(SwitchResult{Success: false, Message: "no agents configured"})
+					fmt.Println(string(res))
+					return nil
+				}
+				fmt.Print(ui.WarningMessage("No agents configured yet. Use 'agpass add <agent>' to add one."))
+				return nil
+			}
+			if len(configuredAgents) == 1 {
+				agentName = configuredAgents[0]
+			} else {
+				if switchJsonOutput {
+					res, _ := json.Marshal(SwitchResult{Success: false, Message: "agent name is required in headless mode"})
+					fmt.Println(string(res))
+					return nil
+				}
+				items := make([]ui.AccountItem, len(configuredAgents))
+				for i, name := range configuredAgents {
+					items[i] = ui.AccountItem{Name: name}
+				}
+				selector := ui.NewSelector("Select Agent", items)
+				p := tea.NewProgram(selector)
+				result, err := p.Run()
+				if err != nil {
+					fmt.Print(ui.ErrorMessage(fmt.Sprintf("Selector error: %v", err)))
+					return nil
+				}
+				model := result.(ui.SelectorModel)
+				if model.Quitting || model.GetSelectedAccount() == "" {
+					fmt.Print(ui.Muted.Render("\n  Cancelled.\n"))
+					return nil
+				}
+				agentName = model.GetSelectedAccount()
+			}
+		}
 
 		agentInfo, err := agents.GetAgent(agentName)
 		if err != nil {
@@ -47,17 +98,6 @@ Can be run interactively (with arrow keys) or in headless mode by providing the 
 				fmt.Printf("%s ", ui.AgentName.Render(name))
 			}
 			fmt.Println()
-			return nil
-		}
-
-		cfg, err := config.Load()
-		if err != nil {
-			if switchJsonOutput {
-				res, _ := json.Marshal(SwitchResult{Success: false, Agent: agentName, Message: fmt.Sprintf("failed to load config: %v", err)})
-				fmt.Println(string(res))
-				return nil
-			}
-			fmt.Print(ui.ErrorMessage(fmt.Sprintf("Failed to load config: %v", err)))
 			return nil
 		}
 

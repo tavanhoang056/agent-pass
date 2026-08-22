@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"agent-pass/cmd"
+	"agpass/cmd"
 )
 
 func main() {

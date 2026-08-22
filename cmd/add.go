@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"agent-pass/internal/agents"
-	"agent-pass/internal/config"
-	"agent-pass/internal/ui"
+	"agpass/internal/agents"
+	"agpass/internal/config"
+	"agpass/internal/ui"
 )
 
 var (

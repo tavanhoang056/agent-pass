@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"agent-pass/internal/ui"
+	"agpass/internal/ui"
 )
 
 var rootCmd = &cobra.Command{

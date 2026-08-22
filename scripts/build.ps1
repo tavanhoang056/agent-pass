@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds the agent-pass binary into the bin/ directory.
+    Builds the agpass binary into the bin/ directory.
 #>
 param(
     [string]$OutputDir = "bin"
@@ -12,7 +12,7 @@ $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $target = Join-Path $OutputDir "agpass.exe"
 
-Write-Host "Building agent-pass -> $target..." -ForegroundColor Cyan
+Write-Host "Building agpass -> $target..." -ForegroundColor Cyan
 go build -ldflags="-s -w" -o $target .
 
 if ($LASTEXITCODE -eq 0) {
